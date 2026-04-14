@@ -1,2 +1,5 @@
 # ignore backtesting logs
 **/backtests
+
+# ignore pycache
+**/__pycache__
