@@ -3,3 +3,6 @@
 
 # ignore pycache
 **/__pycache__
+
+# ignore submission logs
+**/Submission Logs
