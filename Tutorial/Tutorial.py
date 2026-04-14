@@ -183,7 +183,7 @@ class Trader:
                 orders = []
 
                 mu = 10000
-                eps = 8
+                eps = 5
                 # Buy using eps window around mu - the FV of the asset
 
                 if position > 10:
