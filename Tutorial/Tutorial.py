@@ -142,7 +142,30 @@ class Trader:
         conversions = 0
         trader_data = ""
 
-        # TODO: Add logic
+        for product, order_depth in state.order_depths.items():
+            if product == 'TOMATOES':
+                orders = []
+                # Calculate the 'Wall Mid'
+                best_bid = max(order_depth.buy_orders.keys())
+                best_ask = min(order_depth.sell_orders.keys())
+                mid_price = (best_bid + best_ask) / 2
+                
+                # Simple Market Making around the Mid
+                # We want to buy 1 shell below mid and sell 1 shell above
+                orders.append(Order(product, int(mid_price - 1), 10))
+                orders.append(Order(product, int(mid_price + 1), -10))
+                
+                result[product] = orders
+            if product == 'EMERALDS':
+                orders = []
+
+                mu = 10000
+                eps = 8
+                # Buy using eps window around mu - the FV of the asset
+                orders.append(Order(product, mu - eps, 10))
+                orders.append(Order(product, mu + eps, -10))
+
+                result[product] = orders
 
         logger.flush(state, result, conversions, trader_data)
         return result, conversions, trader_data
