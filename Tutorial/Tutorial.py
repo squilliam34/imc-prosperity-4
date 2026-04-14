@@ -144,28 +144,61 @@ class Trader:
 
         for product, order_depth in state.order_depths.items():
             if product == 'TOMATOES':
+                position = state.position.get("TOMATOES", 0)
+
                 orders = []
-                # Calculate the 'Wall Mid'
                 best_bid = max(order_depth.buy_orders.keys())
+                best_bid_vol = order_depth.buy_orders[best_bid]
+
                 best_ask = min(order_depth.sell_orders.keys())
+                best_ask_vol = abs(order_depth.sell_orders[best_ask]) # Use abs() because ask vol is negative
+
                 mid_price = (best_bid + best_ask) / 2
-                
-                # Simple Market Making around the Mid
-                # We want to buy 1 shell below mid and sell 1 shell above
-                orders.append(Order(product, int(mid_price - 1), 10))
-                orders.append(Order(product, int(mid_price + 1), -10))
-                
+
+                # Calculate percent of buyers out of orders
+                imbalance = best_bid_vol / (best_bid_vol + best_ask_vol)
+
+                # If percent of buyers is high, price will likely go UP. 
+                # We should raise our buy price to make sure we get in, or raise our sell price to capture more profit.
+                if imbalance > 0.7:
+                    # Bullish: favor buying
+                    orders.append(Order(product, int(mid_price), 10))     # Buy closer to mid
+                    orders.append(Order(product, int(mid_price + 7), -10)) # Sell higher up
+                elif imbalance < 0.3:
+                    # Bearish: favor selling, noy buying at all
+                    if position > 10:
+                        orders.append(Order(product, int(mid_price-5), -10)) # Favor selling even more if we have a large position
+                    else:
+                        orders.append(Order(product, int(mid_price), -10))    # Sell closer to mid
+                else:
+                    # Balanced
+                    orders.append(Order(product, int(mid_price - 5), 10))
+                    if position > 10:
+                        orders.append(Order(product, int(mid_price), -10)) # Favor selling if we have a large position
+                    else:
+                        orders.append(Order(product, int(mid_price + 5), -10))
                 result[product] = orders
             if product == 'EMERALDS':
+                position = state.position.get('EMERALDS', 0)
                 orders = []
 
                 mu = 10000
                 eps = 8
                 # Buy using eps window around mu - the FV of the asset
-                orders.append(Order(product, mu - eps, 10))
-                orders.append(Order(product, mu + eps, -10))
+
+                if position > 10:
+                    # Favor selling
+                    orders.append(Order(product, mu, -10))
+                elif position < -10:
+                    # Favor buying
+                    orders.append(Order(product, mu, 10))
+                else:
+                    orders.append(Order(product, mu + eps, -7))
+                    orders.append(Order(product, mu - eps, 7))
+                
 
                 result[product] = orders
+
 
         logger.flush(state, result, conversions, trader_data)
         return result, conversions, trader_data
