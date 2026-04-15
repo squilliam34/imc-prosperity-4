@@ -3,6 +3,14 @@ from typing import Any
 
 from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState
 
+# Hard code product names to avoid typos and having to type the full name
+ROOTS = 'INTARIAN_PEPPER_ROOT'
+OSMIUM = 'ASH_COATED_OSMIUM'
+
+PRODUCTS = [
+    ROOTS,
+    OSMIUM
+]
 
 class Logger:
     def __init__(self) -> None:
@@ -137,6 +145,16 @@ logger = Logger()
 
 
 class Trader:
+
+    def __init__(self):
+        self.position_limits = {
+            ROOTS: 20,
+            OSMIUM: 20
+        }
+
+    def get_position(self, product, state: TradingState):
+        return state.position.get(product, 0) 
+
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         result = {}
         conversions = 0
