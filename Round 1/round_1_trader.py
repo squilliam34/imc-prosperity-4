@@ -160,10 +160,15 @@ class Trader:
 
     # Utils 
     def get_position(self, product, state: TradingState):
+        """
+        Retrieves your current position for a product
+        """
         return state.position.get(product, 0)
 
     def get_mid_price(self, product, state: TradingState):
-
+        """
+        Calculates the mid price from the bid-ask spread for a product        
+        """
         default_price = DEFAULT_PRICES[product]
 
         market_bids = state.order_depths[product].buy_orders
@@ -181,6 +186,10 @@ class Trader:
         return (best_bid + best_ask)/2
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
+        """
+        Only method required. It takes all buy and sell orders for all symbols as an input,
+        and outputs a list of orders to be sent
+        """
         result = {}
         conversions = 0
         trader_data = ""
