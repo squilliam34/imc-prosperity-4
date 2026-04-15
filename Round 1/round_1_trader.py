@@ -12,6 +12,12 @@ PRODUCTS = [
     OSMIUM
 ]
 
+DEFAULT_PRICES = {
+    # This is the price of the roots at the end of Day 0 
+    ROOTS: 13000,
+    OSMIUM: 10000
+}
+
 class Logger:
     def __init__(self) -> None:
         self.logs = ""
@@ -152,8 +158,27 @@ class Trader:
             OSMIUM: 20
         }
 
+    # Utils 
     def get_position(self, product, state: TradingState):
-        return state.position.get(product, 0) 
+        return state.position.get(product, 0)
+
+    def get_mid_price(self, product, state: TradingState):
+
+        default_price = DEFAULT_PRICES[product]
+
+        market_bids = state.order_depths[product].buy_orders
+        if len(market_bids) == 0:
+            # There are no bid orders in the market (midprice undefined)
+            return default_price
+        
+        market_asks = state.order_depths[product].sell_orders
+        if len(market_asks) == 0:
+            # There are no bid orders in the market (mid_price undefined)
+            return default_price
+        
+        best_bid = max(market_bids)
+        best_ask = min(market_asks)
+        return (best_bid + best_ask)/2
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         result = {}
