@@ -154,8 +154,8 @@ class Trader:
 
     def __init__(self):
         self.position_limits = {
-            ROOTS: 20,
-            OSMIUM: 20
+            OSMIUM: 20,
+            ROOTS: 5
         }
 
     # Utils 
@@ -184,6 +184,39 @@ class Trader:
         best_bid = max(market_bids)
         best_ask = min(market_asks)
         return (best_bid + best_ask)/2
+    
+    def trade_osmium(self, state: TradingState):
+        """
+        Strategy for trading osmium. FV asset so simply trade around the FV
+        """
+        position = self.get_position(OSMIUM, state)
+        mu = DEFAULT_PRICES[OSMIUM]
+        eps = 2
+
+        orders = []
+        
+        # How much we shift our price per unit of inventory
+        skew_factor = 0.1 
+        
+        # Calculate Skewed Fair Value
+        # If position is +10 (Long), skewed_mu becomes 9999 (Lower)
+        skewed_mu = mu - (position * skew_factor)
+        
+        eps = 2 
+        orders = []
+
+        sell_price = round(skewed_mu + eps)
+        buy_price = round(skewed_mu - eps)
+
+        buy_qty = self.position_limits[OSMIUM] - position
+        sell_qty = -self.position_limits[OSMIUM] - position 
+
+        if buy_qty > 0:
+            orders.append(Order(OSMIUM, buy_price, buy_qty))
+        if sell_qty < 0:
+            orders.append(Order(OSMIUM, sell_price, sell_qty))
+
+        return orders
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         """
