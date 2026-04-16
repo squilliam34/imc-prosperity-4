@@ -156,7 +156,7 @@ class Trader:
 
     def __init__(self):
         self.position_limits = {
-            OSMIUM: 5,
+            OSMIUM: 3,
             ROOTS: 5
         }
 
@@ -164,7 +164,7 @@ class Trader:
         for product in PRODUCTS:
             self.ema[product] = DEFAULT_PRICES[product]
 
-        self.alpha = 0.95
+        self.alpha = 0.5
 
         self.price_history = []
         self.WINDOW_SIZE = 10
@@ -224,9 +224,10 @@ class Trader:
             best_bid = max(market_bids)
             bid_vol = orders[product].buy_orders[best_bid]
 
+        if bid_vol == 0 & ask_vol == 0:
+            return 0
+
         return (best_bid*bid_vol + best_ask*ask_vol) / (bid_vol + ask_vol)
-        
-        
     
     def trade_roots(self, state: TradingState):
         orders = []
@@ -254,9 +255,6 @@ class Trader:
 
         buy_qty = 0
         sell_qty = 0
-        # if zscore < -0.2:
-        #     # strong buy
-        #     buy_qty = 3
         if zscore < -0.1:
             # buy
             buy_qty = 1
@@ -276,28 +274,57 @@ class Trader:
     
     def trade_osmium(self, state: TradingState):
         """
-        Strategy for trading osmium. FV asset so trade around the FV
+        Strategy for trading osmium. Use microprice to try to predict
+        where in the cycle osmium is going
         """
         position = self.get_position(OSMIUM, state)
-        mu = int(self.ema[OSMIUM])
-        eps = 8
-        orders = []            
-        # How much we shift our price per unit of inventory
-        skew_factor = 0.7
+        limit = self.position_limits[OSMIUM]
+        micro_price = self.calculate_microprice(OSMIUM, state) if self.calculate_microprice(OSMIUM, state) != 0 else self.ema[OSMIUM]
+        mid_price = self.get_mid_price(OSMIUM, state) if self.get_mid_price(OSMIUM, state) else self.ema[OSMIUM]
+        orders = [] 
+        order_depth = state.order_depths[OSMIUM]
 
-        skewed_mu = mu - (position * skew_factor)
+        bid_price = 0
+        ask_price = 0
 
-        buy_price = int(skewed_mu - eps)
-        sell_price = int(skewed_mu + eps)
+        bids = order_depth.buy_orders
+        if bids:
+            bid_price = max(bids) 
+        asks = order_depth.sell_orders
+        if asks:
+            ask_price = min(asks) 
 
-        buy_qty = self.position_limits[OSMIUM] - position
-        sell_qty = -self.position_limits[OSMIUM] - position
+        buy_qty = limit - position
+        ask_qty = - limit - position
 
-        buy_qty = self.position_limits[OSMIUM] - position
-        sell_qty = -self.position_limits[OSMIUM] - position
+        if position > limit*0.5:
+            buy_qty = 0
+        if position < -limit*0.5:
+            ask_qty = 0
 
-        orders.append(Order(OSMIUM, buy_price, buy_qty))
-        orders.append(Order(OSMIUM, sell_price, sell_qty))
+        threshold = 3
+
+        if micro_price < mid_price - threshold:
+            # there should be more selling in the market
+            if bid_price == 0:
+                bid_price = np.floor(micro_price)
+            if ask_price == 0:
+                ask_price = np.ceil(micro_price + 3)
+        elif micro_price > mid_price + threshold:
+            # there should be more buying in the market
+            if bid_price == 0:
+                bid_price = np.floor(micro_price - 3)
+
+            if ask_price == 0:
+                ask_price = np.ceil(micro_price)
+        else:
+            if bid_price == 0:
+                bid_price = np.floor(mid_price - 3)
+            if ask_price == 0:
+                ask_price = np.ceil(mid_price + 3)
+            
+        orders.append(Order(OSMIUM, int(bid_price), buy_qty))
+        orders.append(Order(OSMIUM, int(ask_price), ask_qty))
 
         return orders
 
