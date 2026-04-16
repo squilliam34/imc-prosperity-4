@@ -3,6 +3,8 @@ from typing import Any
 
 from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState
 
+import numpy as np
+
 # Hard code product names to avoid typos and having to type the full name
 ROOTS = 'INTARIAN_PEPPER_ROOT'
 OSMIUM = 'ASH_COATED_OSMIUM'
@@ -77,8 +79,8 @@ class Logger:
 
     def compress_order_depths(self, order_depths: dict[Symbol, OrderDepth]) -> dict[Symbol, list[Any]]:
         compressed = {}
-        for symbol, order_depth in order_depths.items():
-            compressed[symbol] = [order_depth.buy_orders, order_depth.sell_orders]
+        for symbol, order_depths in order_depths.items():
+            compressed[symbol] = [order_depths, order_depths]
 
         return compressed
 
@@ -154,9 +156,15 @@ class Trader:
 
     def __init__(self):
         self.position_limits = {
-            OSMIUM: 20,
+            OSMIUM: 5,
             ROOTS: 5
         }
+
+        self.ema = dict()
+        for product in PRODUCTS:
+            self.ema[product] = DEFAULT_PRICES[product]
+
+        self.alpha = 0.5
 
     # Utils 
     def get_position(self, product, state: TradingState):
@@ -169,52 +177,63 @@ class Trader:
         """
         Calculates the mid price from the bid-ask spread for a product        
         """
-        default_price = DEFAULT_PRICES[product]
 
         market_bids = state.order_depths[product].buy_orders
-        if len(market_bids) == 0:
-            # There are no bid orders in the market (midprice undefined)
-            return default_price
-        
         market_asks = state.order_depths[product].sell_orders
-        if len(market_asks) == 0:
-            # There are no bid orders in the market (mid_price undefined)
-            return default_price
+
+        # If the book is one-sided, return None
+        if not market_bids or not market_asks:
+            return None
         
         best_bid = max(market_bids)
         best_ask = min(market_asks)
-        return (best_bid + best_ask)/2
+        # Return None if one of their values == 0 due to a lack of orders
+        mid = (best_bid + best_ask)/2
+        if mid < 9000:
+            return None
+        return mid
+    
+    def calculate_ema(self, state: TradingState):
+        """
+        Calculates the exponential moving average for products
+        """
+        for product in PRODUCTS:
+            mid = self.get_mid_price(product, state)
+
+            if mid is None:
+                continue
+
+            else:
+                self.ema[product] = self.alpha*mid + (1 - self.alpha)*self.ema[product]
     
     def trade_osmium(self, state: TradingState):
         """
-        Strategy for trading osmium. FV asset so simply trade around the FV
+        Strategy for trading osmium. FV asset so trade around the FV
         """
         position = self.get_position(OSMIUM, state)
-        mu = DEFAULT_PRICES[OSMIUM]
-        eps = 2
+        mu = self.ema[OSMIUM]
+        eps = 8
 
         orders = []
         
         # How much we shift our price per unit of inventory
-        skew_factor = 0.1 
-        
-        # Calculate Skewed Fair Value
-        # If position is +10 (Long), skewed_mu becomes 9999 (Lower)
-        skewed_mu = mu - (position * skew_factor)
-        
-        eps = 2 
+        skew_factor = 0.1
+    
         orders = []
 
+        skewed_mu = mu - (position * skew_factor)
+
+        buy_price = round(skewed_mu - (eps -1))
         sell_price = round(skewed_mu + eps)
-        buy_price = round(skewed_mu - eps)
 
         buy_qty = self.position_limits[OSMIUM] - position
         sell_qty = -self.position_limits[OSMIUM] - position 
 
-        if buy_qty > 0:
-            orders.append(Order(OSMIUM, buy_price, buy_qty))
-        if sell_qty < 0:
-            orders.append(Order(OSMIUM, sell_price, sell_qty))
+        buy_qty = self.position_limits[OSMIUM] - position
+        sell_qty = -self.position_limits[OSMIUM] - position
+
+        orders.append(Order(OSMIUM, buy_price, buy_qty))
+        orders.append(Order(OSMIUM, sell_price, sell_qty))
 
         return orders
 
@@ -227,7 +246,8 @@ class Trader:
         conversions = 0
         trader_data = ""
 
-        # TODO: Add logic
+        self.calculate_ema(state)
+        result[OSMIUM] = self.trade_osmium(state)
 
         logger.flush(state, result, conversions, trader_data)
         return result, conversions, trader_data
