@@ -166,6 +166,9 @@ class Trader:
 
         self.alpha = 0.5
 
+        self.price_history = []
+        self.WINDOW_SIZE = 10
+
     # Utils 
     def get_position(self, product, state: TradingState):
         """
@@ -187,12 +190,12 @@ class Trader:
         
         best_bid = max(market_bids)
         best_ask = min(market_asks)
-        # Return None if one of their values == 0 due to a lack of orders
-        mid = (best_bid + best_ask)/2
-        if mid < 9000:
+
+        if best_ask <= best_bid:
             return None
-        return mid
-    
+        # Return None if one of their values == 0 due to a lack of orders
+        return (best_bid + best_ask)/2
+
     def calculate_ema(self, state: TradingState):
         """
         Calculates the exponential moving average for products
@@ -205,6 +208,52 @@ class Trader:
 
             else:
                 self.ema[product] = self.alpha*mid + (1 - self.alpha)*self.ema[product]
+    
+    def trade_roots(self, state: TradingState):
+        orders = []
+        
+        mid_price = self.get_mid_price(ROOTS, state)
+        if mid_price is not None:
+            self.price_history.append(mid_price)
+        
+        # Keep window size manageable
+        if len(self.price_history) > self.WINDOW_SIZE:
+            self.price_history.pop(0)
+        
+        # 2. Estimate the "Drift" (Simple Linear Trend)
+        prices = np.array(self.price_history)
+        # Change per tick over the window
+        if len(prices) == 1:
+            drift = 0
+        else:
+            drift = (prices[-1] - prices[0]) / max(len(prices) - 1, 1)
+
+        expected_price = prices[-1] + drift
+        residual = prices - expected_price
+
+        zscore = residual[-1] / np.std(residual)
+
+        buy_qty = 0
+        sell_qty = 0
+        # if zscore < -0.2:
+        #     # strong buy
+        #     buy_qty = 3
+        if zscore < -0.1:
+            # buy
+            buy_qty = 1
+        if zscore > 0.1:
+            # very small sell
+            sell_qty = -1
+
+        limit = self.position_limits[ROOTS]
+        position = self.get_position(ROOTS, state)
+        buy_qty = min(buy_qty, limit - position)
+        sell_qty = min(sell_qty, position + limit)
+
+        orders.append(Order(ROOTS, int(expected_price-1), buy_qty))
+        orders.append(Order(ROOTS, int(expected_price+3), sell_qty))
+
+        return orders
     
     def trade_osmium(self, state: TradingState):
         """
@@ -232,8 +281,11 @@ class Trader:
         buy_qty = self.position_limits[OSMIUM] - position
         sell_qty = -self.position_limits[OSMIUM] - position
 
-        orders.append(Order(OSMIUM, buy_price, buy_qty))
-        orders.append(Order(OSMIUM, sell_price, sell_qty))
+        for i in range(1, eps):
+            if position < self.position_limits[OSMIUM]*0.8:
+                orders.append(Order(OSMIUM, int(skewed_mu - i), 1))
+            if position > -self.position_limits[OSMIUM]*0.8:
+                orders.append(Order(OSMIUM, int(skewed_mu + i), -1))
 
         return orders
 
@@ -248,6 +300,7 @@ class Trader:
 
         self.calculate_ema(state)
         result[OSMIUM] = self.trade_osmium(state)
+        result[ROOTS] = self.trade_roots(state)
 
         logger.flush(state, result, conversions, trader_data)
         return result, conversions, trader_data
