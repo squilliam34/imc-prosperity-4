@@ -164,7 +164,7 @@ class Trader:
         for product in PRODUCTS:
             self.ema[product] = DEFAULT_PRICES[product]
 
-        self.alpha = 0.5
+        self.alpha = 0.95
 
         self.price_history = []
         self.WINDOW_SIZE = 10
@@ -208,6 +208,25 @@ class Trader:
 
             else:
                 self.ema[product] = self.alpha*mid + (1 - self.alpha)*self.ema[product]
+
+    def calculate_microprice(self, product, state: TradingState):
+        """
+        Calculates the microprice of a given product
+        """
+        orders = state.order_depths
+        market_bids = orders[product].buy_orders
+        market_asks = orders[product].sell_orders
+        best_ask = best_bid = ask_vol = bid_vol = 0
+        if market_asks:
+            best_ask = min(market_asks)
+            ask_vol = abs(orders[product].sell_orders[best_ask])
+        if market_bids:
+            best_bid = max(market_bids)
+            bid_vol = orders[product].buy_orders[best_bid]
+
+        return (best_bid*bid_vol + best_ask*ask_vol) / (bid_vol + ask_vol)
+        
+        
     
     def trade_roots(self, state: TradingState):
         orders = []
@@ -260,32 +279,25 @@ class Trader:
         Strategy for trading osmium. FV asset so trade around the FV
         """
         position = self.get_position(OSMIUM, state)
-        mu = self.ema[OSMIUM]
+        mu = int(self.ema[OSMIUM])
         eps = 8
-
-        orders = []
-        
+        orders = []            
         # How much we shift our price per unit of inventory
-        skew_factor = 0.1
-    
-        orders = []
+        skew_factor = 0.7
 
         skewed_mu = mu - (position * skew_factor)
 
-        buy_price = round(skewed_mu - (eps -1))
-        sell_price = round(skewed_mu + eps)
-
-        buy_qty = self.position_limits[OSMIUM] - position
-        sell_qty = -self.position_limits[OSMIUM] - position 
+        buy_price = int(skewed_mu - eps)
+        sell_price = int(skewed_mu + eps)
 
         buy_qty = self.position_limits[OSMIUM] - position
         sell_qty = -self.position_limits[OSMIUM] - position
 
-        for i in range(1, eps):
-            if position < self.position_limits[OSMIUM]*0.8:
-                orders.append(Order(OSMIUM, int(skewed_mu - i), 1))
-            if position > -self.position_limits[OSMIUM]*0.8:
-                orders.append(Order(OSMIUM, int(skewed_mu + i), -1))
+        buy_qty = self.position_limits[OSMIUM] - position
+        sell_qty = -self.position_limits[OSMIUM] - position
+
+        orders.append(Order(OSMIUM, buy_price, buy_qty))
+        orders.append(Order(OSMIUM, sell_price, sell_qty))
 
         return orders
 
