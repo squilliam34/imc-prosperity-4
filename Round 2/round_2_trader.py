@@ -4,6 +4,19 @@ import numpy as np
 
 from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState
 
+ROOTS = 'INTARIAN_PEPPER_ROOT'
+OSMIUM = 'ASH_COATED_OSMIUM'
+
+PRODUCTS = [
+    ROOTS,
+    OSMIUM
+]
+
+DEFAULT_PRICES = {
+    # This is the price of the roots at the end of Day 0 
+    ROOTS: 13000,
+    OSMIUM: 10000
+}
 
 class Logger:
     def __init__(self) -> None:
