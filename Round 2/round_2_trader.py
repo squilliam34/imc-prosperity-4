@@ -208,8 +208,11 @@ class Trader:
         }
 
         self.price_history = []
-        self.WINDOW_SIZE = 10
+        self.windows = 10
 
+        # KF for pattern detection
+        self.kf = None
+        
     # Utils 
     def get_position(self, product, state: TradingState):
         """
@@ -256,6 +259,31 @@ class Trader:
             return 0
 
         return (best_bid*bid_vol + best_ask*ask_vol) / (bid_vol + ask_vol)
+
+    def trade_osmium(self, state: TradingState):
+        """
+        Strategy for trading osmium. Use microprice to try to predict
+        where in the cycle osmium is going
+        """
+        position = self.get_position(OSMIUM, state)
+        limit = self.position_limits[OSMIUM]
+        micro_price = self.calculate_microprice(OSMIUM, state) #if self.calculate_microprice(OSMIUM, state) != 0 else self.ema[OSMIUM]
+        mid_price = self.get_mid_price(OSMIUM, state) #if self.get_mid_price(OSMIUM, state) else self.ema[OSMIUM]
+        orders = []
+        order_depth = state.order_depths[OSMIUM]
+
+        bid_price = 0
+        ask_price = 0
+
+        if self.kf is None:
+            self.kf = KalmanFilter(F = np.identity(1), 
+            Z = np.identity(1), 
+            x0 = DEFAULT_PRICES[OSMIUM], 
+            # tuned value from training KF on historic data
+            P = np.ndarray([[0.61803399]]))
+
+
+        return orders
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         result = {}
