@@ -137,6 +137,63 @@ logger = Logger()
 
 
 class Trader:
+    def __init__(self):
+
+        self.position_limits = {
+            OSMIUM: 3,
+            ROOTS: 5
+        }
+
+        self.price_history = []
+        self.WINDOW_SIZE = 10
+
+    # Utils 
+    def get_position(self, product, state: TradingState):
+        """
+        Retrieves your current position for a product
+        """
+        return state.position.get(product, 0)
+
+    def get_mid_price(self, product, state: TradingState):
+        """
+        Calculates the mid price from the bid-ask spread for a product        
+        """
+
+        market_bids = state.order_depths[product].buy_orders
+        market_asks = state.order_depths[product].sell_orders
+
+        # If the book is one-sided, return None
+        if not market_bids or not market_asks:
+            return None
+        
+        best_bid = max(market_bids)
+        best_ask = min(market_asks)
+
+        if best_ask <= best_bid:
+            return None
+        # Return None if one of their values == 0 due to a lack of orders
+        return (best_bid + best_ask)/2
+
+    def calculate_microprice(self, product, state: TradingState):
+        """
+        Calculates the microprice of a given product
+        """
+        orders = state.order_depths
+        market_bids = orders[product].buy_orders
+        market_asks = orders[product].sell_orders
+        best_ask = best_bid = ask_vol = bid_vol = 0
+        if market_asks:
+            best_ask = min(market_asks)
+            ask_vol = abs(orders[product].sell_orders[best_ask])
+        if market_bids:
+            best_bid = max(market_bids)
+            bid_vol = orders[product].buy_orders[best_bid]
+
+        if bid_vol == 0 & ask_vol == 0:
+            return 0
+
+        return (best_bid*bid_vol + best_ask*ask_vol) / (bid_vol + ask_vol)
+
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         result = {}
         conversions = 0
