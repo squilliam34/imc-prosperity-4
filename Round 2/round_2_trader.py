@@ -13,8 +13,8 @@ PRODUCTS = [
 ]
 
 DEFAULT_PRICES = {
-    # This is the price of the roots at the end of Day 0 
-    ROOTS: 13000,
+    # This is the price of the roots at the end of Day 1
+    ROOTS: 14000,
     OSMIUM: 10000
 }
 
@@ -212,7 +212,7 @@ class Trader:
 
         # KF for pattern detection
         self.kf = None
-        
+
     # Utils 
     def get_position(self, product, state: TradingState):
         """
@@ -256,7 +256,7 @@ class Trader:
             bid_vol = orders[product].buy_orders[best_bid]
 
         if bid_vol == 0 & ask_vol == 0:
-            return 0
+            return None
 
         return (best_bid*bid_vol + best_ask*ask_vol) / (bid_vol + ask_vol)
 
@@ -265,23 +265,39 @@ class Trader:
         Strategy for trading osmium. Use microprice to try to predict
         where in the cycle osmium is going
         """
-        position = self.get_position(OSMIUM, state)
-        limit = self.position_limits[OSMIUM]
-        micro_price = self.calculate_microprice(OSMIUM, state) #if self.calculate_microprice(OSMIUM, state) != 0 else self.ema[OSMIUM]
-        mid_price = self.get_mid_price(OSMIUM, state) #if self.get_mid_price(OSMIUM, state) else self.ema[OSMIUM]
+        micro_price = self.calculate_microprice(OSMIUM, state)
         orders = []
-        order_depth = state.order_depths[OSMIUM]
-
-        bid_price = 0
-        ask_price = 0
-
+        
+        F = Z = np.identity(1)
         if self.kf is None:
-            self.kf = KalmanFilter(F = np.identity(1), 
-            Z = np.identity(1), 
-            x0 = DEFAULT_PRICES[OSMIUM], 
-            # tuned value from training KF on historic data
-            P = np.ndarray([[0.61803399]]))
 
+            self.kf = KalmanFilter(F = F, Z = Z,
+            x0 = DEFAULT_PRICES[OSMIUM],
+            Q = np.float64(7.695017547774536), 
+            eps = np.float64(4.92916956606201),
+            P = np.array([[3.41426581]])) 
+
+        if micro_price:
+
+            position = self.get_position(OSMIUM, state)
+            limit = self.position_limits[OSMIUM]
+
+            buy_qty = limit - position
+            sell_qty = -limit - position
+
+            order_depth = state.order_depths[OSMIUM]
+            threshold = 0
+            kf = self.kf
+            prediction = np.dot(Z, kf.predict())[0]
+
+            signal = prediction - micro_price
+            if signal > threshold:
+                if order_depth.sell_orders:
+                    orders.append(Order(OSMIUM, int(min(order_depth.sell_orders)), sell_qty))
+            elif signal < -threshold:
+                if order_depth.buy_orders:
+                    orders.append(Order(OSMIUM, int(max(order_depth.buy_orders)), buy_qty))
+            kf.update(micro_price)
 
         return orders
 
@@ -290,7 +306,7 @@ class Trader:
         conversions = 0
         trader_data = ""
 
-        # TODO: Add logic
+        result[OSMIUM] = self.trade_osmium(state)
 
         logger.flush(state, result, conversions, trader_data)
         return result, conversions, trader_data
